@@ -39,3 +39,8 @@ yarn-error.*
 # generated native folders
 /ios
 /android
+
+# service account keys / secrets - never commit these
+serviceAccountKey.json
+*serviceAccount*.json
+.env

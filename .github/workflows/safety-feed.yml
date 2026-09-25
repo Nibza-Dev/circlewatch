@@ -1,0 +1,27 @@
+name: Refresh Safety Feed
+
+on:
+  schedule:
+    # Every 4 hours - plenty for "updated in good time", not real-time,
+    # and well inside NewsAPI's free 100 requests/day limit.
+    - cron: '0 */4 * * *'
+  workflow_dispatch: {} # lets you trigger it manually from the Actions tab to test
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Fetch and store safety updates
+        env:
+          NEWSAPI_KEY: ${{ secrets.NEWSAPI_KEY }}
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+        run: node scripts/fetch-safety-feed.js
