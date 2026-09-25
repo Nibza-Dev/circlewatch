@@ -10,7 +10,8 @@
  *                              service account key, as a single string.
  */
 
-const admin = require('firebase-admin');
+const { initializeApp, cert } = require('firebase-admin/app');
+const { getFirestore, FieldValue } = require('firebase-admin/firestore');
 
 const NEWSAPI_KEY = process.env.NEWSAPI_KEY;
 const SERVICE_ACCOUNT_RAW = process.env.FIREBASE_SERVICE_ACCOUNT;
@@ -26,11 +27,11 @@ if (!SERVICE_ACCOUNT_RAW) {
 
 const serviceAccount = JSON.parse(SERVICE_ACCOUNT_RAW);
 
-admin.initializeApp({
-    credential: admin.credential.cert(serviceAccount),
+const app = initializeApp({
+    credential: cert(serviceAccount),
 });
 
-const db = admin.firestore();
+const db = getFirestore(app);
 
 // Keywords that make a headline relevant to personal/community safety.
 // Kept specific on purpose - broad words like bare "fire" or "safety" alone
@@ -78,7 +79,7 @@ async function run() {
             body: article.description || '',
             source: article.source?.name || 'News',
             url: article.url,
-            createdAt: admin.firestore.FieldValue.serverTimestamp(),
+            createdAt: FieldValue.serverTimestamp(),
         });
         added += 1;
     }
