@@ -36,10 +36,12 @@ const db = getFirestore(app);
 // Keywords that make a headline relevant to personal/community safety.
 // Kept specific on purpose - broad words like bare "fire" or "safety" alone
 // pull in a lot of noise (sports teams, unrelated "safety award" pieces, etc.).
+// Narrowed on purpose to violent-crime and women's-safety news specifically
+// (hijacking, kidnapping, GBV, etc.) rather than general civil-emergency
+// topics like protests or load shedding.
 const SAFETY_KEYWORDS = [
-    'crime', 'robbery', 'hijacking', 'shooting', 'stabbing', 'kidnap',
-    'murder', 'assault', 'protest', 'riot', 'flood', 'wildfire', 'blaze',
-    'load shedding', 'emergency', 'evacuation', 'gang violence', 'gender-based violence',
+    'hijacking', 'kidnapping', 'robbery', 'murder', 'shooting', 'stabbing',
+    'assault', 'gang violence', 'rape', 'gender-based violence', 'domestic violence',
 ];
 
 const buildQuery = () => SAFETY_KEYWORDS.map((k) => `"${k}"`).join(' OR ');
