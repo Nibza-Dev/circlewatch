@@ -55,21 +55,39 @@ const SA_DOMAINS = [
     'citizen.co.za', 'mg.co.za', 'sabcnews.com', 'sowetanlive.co.za',
 ].join(',');
 
-async function fetchHeadlines() {
+async function queryNewsAPI(extraParams) {
     const params = new URLSearchParams({
         q: buildQuery(),
-        domains: SA_DOMAINS,
         language: 'en',
         sortBy: 'publishedAt',
         pageSize: '20',
         apiKey: NEWSAPI_KEY,
+        ...extraParams,
     });
     const res = await fetch(`https://newsapi.org/v2/everything?${params.toString()}`);
     const data = await res.json();
     if (data.status !== 'ok') {
         throw new Error(`NewsAPI error: ${data.code} - ${data.message}`);
     }
-    return data.articles || [];
+    return data;
+}
+
+async function fetchHeadlines() {
+    // First try restricted to known South African outlets.
+    const restricted = await queryNewsAPI({ domains: SA_DOMAINS });
+    console.log(`South-Africa-domain search: totalResults=${restricted.totalResults}, returned=${(restricted.articles || []).length}`);
+    if ((restricted.articles || []).length > 0) {
+        return restricted.articles;
+    }
+
+    // Domain-restricted search came back empty (NewsAPI's coverage of these
+    // specific SA outlets may be thin) - fall back to an unrestricted search
+    // with the same safety keywords so the feed isn't empty. Less precisely
+    // "South African," but still real, relevant, keyword-matched news.
+    console.log('No results from SA-domain search, falling back to unrestricted search.');
+    const fallback = await queryNewsAPI({});
+    console.log(`Unrestricted search: totalResults=${fallback.totalResults}, returned=${(fallback.articles || []).length}`);
+    return fallback.articles || [];
 }
 
 async function alreadyStored(url) {
