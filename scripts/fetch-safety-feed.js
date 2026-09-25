@@ -44,14 +44,25 @@ const SAFETY_KEYWORDS = [
 
 const buildQuery = () => SAFETY_KEYWORDS.map((k) => `"${k}"`).join(' OR ');
 
+// Major South African news outlets. /v2/everything has no "country" filter
+// (that's only on /v2/top-headlines, which searches a much smaller "trending"
+// pool and turned out to return 0 matches most days) - restricting to these
+// domains is how we keep results South-Africa-specific instead.
+const SA_DOMAINS = [
+    'news24.com', 'iol.co.za', 'ewn.co.za', 'timeslive.co.za',
+    'citizen.co.za', 'mg.co.za', 'sabcnews.com', 'sowetanlive.co.za',
+].join(',');
+
 async function fetchHeadlines() {
     const params = new URLSearchParams({
-        country: 'za',
         q: buildQuery(),
+        domains: SA_DOMAINS,
+        language: 'en',
+        sortBy: 'publishedAt',
         pageSize: '20',
         apiKey: NEWSAPI_KEY,
     });
-    const res = await fetch(`https://newsapi.org/v2/top-headlines?${params.toString()}`);
+    const res = await fetch(`https://newsapi.org/v2/everything?${params.toString()}`);
     const data = await res.json();
     if (data.status !== 'ok') {
         throw new Error(`NewsAPI error: ${data.code} - ${data.message}`);
