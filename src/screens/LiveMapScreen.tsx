@@ -15,6 +15,11 @@ type SessionData = {
 
 type Props = NativeStackScreenProps<any, 'LiveMap'>;
 
+// Free MapTiler key (cloud.maptiler.com -> Account -> Keys). Gives
+// unlimited requests to the preset "streets" style with true retina
+// (512px) tiles, unlike plain OpenStreetMap which only serves 256px.
+const MAPTILER_API_KEY = 'UF7oJrl9ZnV0mF9JPh3n';
+
 function buildMapHtml(lat: number, lng: number) {
     return `
 <!DOCTYPE html>
@@ -38,9 +43,13 @@ function buildMapHtml(lat: number, lng: number) {
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script>
     var map = L.map('map', { zoomControl: false }).setView([${lat}, ${lng}], 16);
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      maxZoom: 19,
-      attribution: '&copy; OpenStreetMap contributors'
+    L.tileLayer('https://api.maptiler.com/maps/streets-v2/{z}/{x}/{y}.png?key=${MAPTILER_API_KEY}', {
+      tileSize: 512,
+      zoomOffset: -1,
+      detectRetina: true,
+      crossOrigin: true,
+      maxZoom: 20,
+      attribution: '&copy; <a href="https://www.maptiler.com/copyright/" target="_blank">MapTiler</a> &copy; OpenStreetMap contributors'
     }).addTo(map);
 
     var pulseIcon = L.divIcon({
