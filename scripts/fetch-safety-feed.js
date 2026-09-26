@@ -1,7 +1,9 @@
 /**
  * Pulls recent South Africa safety/crime-related headlines from NewsAPI
  * and writes any new ones into the Firestore "safetyFeed" collection,
- * which the app's SafetyFeedScreen listens to live.
+ * which the app's SafetyFeedScreen listens to live. Also prunes anything
+ * older than RETENTION_DAYS so the feed doesn't accumulate stale news
+ * forever.
  *
  * Intended to run on a schedule (see .github/workflows/safety-feed.yml),
  * not manually. Requires two env vars:
@@ -11,7 +13,7 @@
  */
 
 const { initializeApp, cert } = require('firebase-admin/app');
-const { getFirestore, FieldValue } = require('firebase-admin/firestore');
+const { getFirestore, FieldValue, Timestamp } = require('firebase-admin/firestore');
 
 const NEWSAPI_KEY = process.env.NEWSAPI_KEY;
 const SERVICE_ACCOUNT_RAW = process.env.FIREBASE_SERVICE_ACCOUNT;
@@ -32,6 +34,12 @@ const app = initializeApp({
 });
 
 const db = getFirestore(app);
+
+// How long an article stays in the feed before it's treated as stale and
+// removed. Crime/safety news is only actionable while it's recent - a
+// two-week-old hijacking report doesn't help anyone make a decision today,
+// and showing stale news undermines trust in a safety app. Tune as needed.
+const RETENTION_DAYS = 14;
 
 // Keywords that make a headline relevant to personal/community safety.
 // Kept specific on purpose - broad words like bare "fire" or "safety" alone
@@ -100,7 +108,35 @@ async function alreadyStored(url) {
     return !snapshot.empty;
 }
 
+// Deletes any safetyFeed doc older than RETENTION_DAYS. Firestore batches
+// are capped at 500 writes, and the first time this runs it may need to
+// clear out everything accumulated since the feed was first built, so we
+// delete in pages instead of one giant batch.
+async function pruneOldArticles() {
+    const cutoff = Timestamp.fromMillis(Date.now() - RETENTION_DAYS * 24 * 60 * 60 * 1000);
+    const staleQuery = db.collection('safetyFeed').where('createdAt', '<', cutoff);
+
+    let totalDeleted = 0;
+    // eslint-disable-next-line no-constant-condition
+    while (true) {
+        const snapshot = await staleQuery.limit(400).get();
+        if (snapshot.empty) break;
+
+        const batch = db.batch();
+        snapshot.docs.forEach((doc) => batch.delete(doc.ref));
+        await batch.commit();
+
+        totalDeleted += snapshot.size;
+        if (snapshot.size < 400) break;
+    }
+
+    return totalDeleted;
+}
+
 async function run() {
+    const removed = await pruneOldArticles();
+    console.log(`Removed ${removed} article(s) older than ${RETENTION_DAYS} days.`);
+
     const articles = await fetchHeadlines();
     console.log(`Fetched ${articles.length} candidate articles from NewsAPI.`);
 
