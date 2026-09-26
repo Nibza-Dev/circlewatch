@@ -39,7 +39,7 @@ const db = getFirestore(app);
 // removed. Crime/safety news is only actionable while it's recent - a
 // two-week-old hijacking report doesn't help anyone make a decision today,
 // and showing stale news undermines trust in a safety app. Tune as needed.
-const RETENTION_DAYS = 14;
+const RETENTION_DAYS = 0; // TEMP: one-time wipe of pre-fix backlog. Revert to 14 after this run.
 
 // Keywords that make a headline relevant to personal/community safety.
 // Kept specific on purpose - broad words like bare "fire" or "safety" alone
