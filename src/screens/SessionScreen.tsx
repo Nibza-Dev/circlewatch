@@ -24,7 +24,7 @@ export default function SessionScreen() {
     const [session, setSession] = useState<SessionData | null>(null);
     const [starting, setStarting] = useState(false);
     const watchRef = useRef<Location.LocationSubscription | null>(null);
-    const checkTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+    const missedAlertShownRef = useRef(false);
 
     useEffect(() => {
         if (!sessionId) return;
@@ -37,25 +37,21 @@ export default function SessionScreen() {
     useEffect(() => {
         return () => {
             watchRef.current?.remove();
-            if (checkTimerRef.current) clearInterval(checkTimerRef.current);
         };
     }, []);
 
+    // Missed-check-in detection and the circle alert itself now happen
+    // server-side (scripts/check-missed-sessions.js, on a 5-minute GitHub
+    // Actions schedule) so they still fire even if this phone loses signal,
+    // the battery dies, or the app gets backgrounded/killed. This effect
+    // just shows a heads-up here if the app happens to still be open when
+    // the server flips the status.
     useEffect(() => {
-        if (!sessionId || !session || session.status !== 'active') return;
-
-        checkTimerRef.current = setInterval(async () => {
-            const deadline = session.expectedArrivalAt?.toDate?.();
-            if (!deadline) return;
-            if (Date.now() > deadline.getTime() && !session.alertSent) {
-                await triggerMissedCheckInAlert();
-            }
-        }, 10000);
-
-        return () => {
-            if (checkTimerRef.current) clearInterval(checkTimerRef.current);
-        };
-    }, [sessionId, session?.status, session?.alertSent]);
+        if (session?.status === 'missed' && !missedAlertShownRef.current) {
+            missedAlertShownRef.current = true;
+            Alert.alert('Circle notified', "You've missed your check-in window. Your trusted circle has been alerted with your last known location.");
+        }
+    }, [session?.status]);
 
     const notifyCircleSessionStarted = async (circleUserIds: string[], ownerName: string, newSessionId: string) => {
         try {
@@ -76,30 +72,6 @@ export default function SessionScreen() {
             );
         } catch (error) {
             console.log('Failed to notify circle of session start', error);
-        }
-    };
-
-    const triggerMissedCheckInAlert = async () => {
-        if (!sessionId || !session) return;
-        try {
-            const tokens: string[] = [];
-            for (const uid of session.circleUserIds) {
-                const tokenSnap = await getDoc(doc(db, 'pushTokens', uid));
-                const token = tokenSnap.data()?.token;
-                if (token) tokens.push(token);
-            }
-
-            await sendPushAlert(
-                tokens,
-                'CircleWatch Alert',
-                `${session.ownerName} missed her check-in and may need help.`,
-                { sessionId, type: 'missed-checkin' }
-            );
-
-            await updateDoc(doc(db, 'sessions', sessionId), { alertSent: true, status: 'missed' });
-            Alert.alert('Circle notified', "You've missed your check-in window. Your trusted circle has been alerted with your last known location.");
-        } catch (error) {
-            console.log('Failed to send missed check-in alert', error);
         }
     };
 
@@ -162,7 +134,6 @@ export default function SessionScreen() {
         await updateDoc(doc(db, 'sessions', sessionId), { status: 'completed' });
         watchRef.current?.remove();
         watchRef.current = null;
-        if (checkTimerRef.current) clearInterval(checkTimerRef.current);
         setSessionId(null);
         setSession(null);
     };
