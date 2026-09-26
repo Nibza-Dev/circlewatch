@@ -44,7 +44,13 @@
       "expo-font",
       "expo-asset",
       "expo-audio",
-      "expo-sharing"
+      "expo-sharing",
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "CircleWatch uses your camera during an SOS so you can photograph a perpetrator or a number plate for your trusted circle and, if needed, the police."
+        }
+      ]
     ],
     "extra": {
       "eas": {

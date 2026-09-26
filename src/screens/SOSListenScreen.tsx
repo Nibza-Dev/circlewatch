@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { View, Text, FlatList, TouchableOpacity, StyleSheet, ActivityIndicator, SafeAreaView } from 'react-native';
+import { View, Text, FlatList, TouchableOpacity, StyleSheet, ActivityIndicator, SafeAreaView, Image, Modal, ScrollView } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as FileSystem from 'expo-file-system/legacy';
 import { useAudioPlayer } from 'expo-audio';
@@ -20,12 +20,20 @@ type SosDoc = {
     status: 'recording' | 'stopped';
 };
 
+type Photo = {
+    id: string;
+    imageBase64: string;
+    createdAt?: Timestamp;
+};
+
 type Props = NativeStackScreenProps<any, 'SOSListen'>;
 
 export default function SOSListenScreen({ route }: Props) {
     const { sosId } = route.params as { sosId: string };
     const [sosDoc, setSosDoc] = useState<SosDoc | null>(null);
     const [segments, setSegments] = useState<Segment[]>([]);
+    const [photos, setPhotos] = useState<Photo[]>([]);
+    const [viewerPhoto, setViewerPhoto] = useState<Photo | null>(null);
     const [loading, setLoading] = useState(true);
     const [playingId, setPlayingId] = useState<string | null>(null);
     const [currentUri, setCurrentUri] = useState<string | undefined>(undefined);
@@ -44,9 +52,15 @@ export default function SOSListenScreen({ route }: Props) {
             setLoading(false);
         });
 
+        const photosQ = query(collection(db, 'sosRecordings', sosId, 'photos'), orderBy('createdAt', 'asc'));
+        const unsubPhotos = onSnapshot(photosQ, (snapshot) => {
+            setPhotos(snapshot.docs.map((d) => ({ id: d.id, ...(d.data() as Omit<Photo, 'id'>) })));
+        });
+
         return () => {
             unsubDoc();
             unsubSegments();
+            unsubPhotos();
         };
     }, [sosId]);
 
@@ -89,6 +103,22 @@ export default function SOSListenScreen({ route }: Props) {
                 </Text>
             </View>
 
+            {photos.length > 0 && (
+                <View style={styles.photoSection}>
+                    <Text style={styles.photoSectionTitle}>Photos ({photos.length})</Text>
+                    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: spacing.lg }}>
+                        {photos.map((photo) => (
+                            <TouchableOpacity key={photo.id} onPress={() => setViewerPhoto(photo)}>
+                                <Image
+                                    source={{ uri: `data:image/jpeg;base64,${photo.imageBase64}` }}
+                                    style={styles.photoThumb}
+                                />
+                            </TouchableOpacity>
+                        ))}
+                    </ScrollView>
+                </View>
+            )}
+
             <FlatList
                 data={segments}
                 keyExtractor={(item) => item.id}
@@ -108,6 +138,21 @@ export default function SOSListenScreen({ route }: Props) {
                     </TouchableOpacity>
                 )}
             />
+
+            <Modal visible={!!viewerPhoto} transparent animationType="fade" onRequestClose={() => setViewerPhoto(null)}>
+                <TouchableOpacity style={styles.viewerBackdrop} activeOpacity={1} onPress={() => setViewerPhoto(null)}>
+                    {viewerPhoto && (
+                        <Image
+                            source={{ uri: `data:image/jpeg;base64,${viewerPhoto.imageBase64}` }}
+                            style={styles.viewerImage}
+                            resizeMode="contain"
+                        />
+                    )}
+                    <View style={styles.viewerCloseButton}>
+                        <Ionicons name="close" size={28} color={colors.white} />
+                    </View>
+                </TouchableOpacity>
+            </Modal>
         </SafeAreaView>
     );
 }
@@ -144,4 +189,41 @@ const styles = StyleSheet.create({
     },
     clipLabel: { ...typography.body, fontWeight: '700' },
     clipTime: { color: colors.textMuted, fontSize: 12, marginTop: 2 },
+    photoSection: {
+        paddingTop: spacing.lg,
+    },
+    photoSectionTitle: {
+        ...typography.body,
+        fontWeight: '700',
+        paddingHorizontal: spacing.lg,
+        marginBottom: spacing.sm,
+    },
+    photoThumb: {
+        width: 90,
+        height: 90,
+        borderRadius: radius.md,
+        marginRight: spacing.sm,
+        backgroundColor: colors.border,
+    },
+    viewerBackdrop: {
+        flex: 1,
+        backgroundColor: 'rgba(0,0,0,0.92)',
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    viewerImage: {
+        width: '100%',
+        height: '80%',
+    },
+    viewerCloseButton: {
+        position: 'absolute',
+        top: 50,
+        right: 20,
+        width: 40,
+        height: 40,
+        borderRadius: radius.pill,
+        backgroundColor: 'rgba(255,255,255,0.15)',
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
 });

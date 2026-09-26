@@ -49,6 +49,18 @@ service cloud.firestore {
           request.auth.uid == get(/databases/$(database)/documents/sosRecordings/$(sosId)).data.ownerId;
         allow update, delete: if false;
       }
+
+      // Photos captured during SOS (perpetrator, number plate, etc). Same
+      // immutability rule as audio segments - once uploaded, evidence can't
+      // be edited or deleted by anyone, including the person who took it.
+      match /photos/{photoId} {
+        allow read: if request.auth != null &&
+          (request.auth.uid == get(/databases/$(database)/documents/sosRecordings/$(sosId)).data.ownerId ||
+           request.auth.uid in get(/databases/$(database)/documents/sosRecordings/$(sosId)).data.circleUserIds);
+        allow create: if request.auth != null &&
+          request.auth.uid == get(/databases/$(database)/documents/sosRecordings/$(sosId)).data.ownerId;
+        allow update, delete: if false;
+      }
     }
 
     match /safetyFeed/{postId} {

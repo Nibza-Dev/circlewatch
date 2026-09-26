@@ -1,10 +1,13 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, Alert } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, Alert, Modal } from 'react-native';
 import { useAudioRecorder, RecordingPresets, requestRecordingPermissionsAsync, setAudioModeAsync } from 'expo-audio';
+import { CameraView, useCameraPermissions } from 'expo-camera';
+import * as ImageManipulator from 'expo-image-manipulator';
 import * as FileSystem from 'expo-file-system/legacy';
 import { addDoc, collection, doc, updateDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '../config/firebase';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
+import { Ionicons } from '@expo/vector-icons';
 import { colors, spacing, radius } from '../theme/theme';
 
 type Props = NativeStackScreenProps<any, 'SOSActive'>;
@@ -25,6 +28,11 @@ export default function SOSActiveScreen({ route, navigation }: Props) {
     const [audioNotice, setAudioNotice] = useState<string | null>(null);
     const isActiveRef = useRef(true);
     const segmentIndexRef = useRef(0);
+    const [cameraOpen, setCameraOpen] = useState(false);
+    const [photoCount, setPhotoCount] = useState(0);
+    const [capturing, setCapturing] = useState(false);
+    const [cameraPermission, requestCameraPermission] = useCameraPermissions();
+    const cameraRef = useRef<CameraView>(null);
 
     useEffect(() => {
         let elapsedTimer: ReturnType<typeof setInterval>;
@@ -124,6 +132,49 @@ export default function SOSActiveScreen({ route, navigation }: Props) {
         };
     }, []);
 
+    const handleOpenCamera = async () => {
+        if (!cameraPermission?.granted) {
+            const result = await requestCameraPermission();
+            if (!result.granted) {
+                Alert.alert('Camera needed', 'CircleWatch needs camera access to photograph a perpetrator or number plate.');
+                return;
+            }
+        }
+        setCameraOpen(true);
+    };
+
+    const handleCapturePhoto = async () => {
+        if (!cameraRef.current || capturing) return;
+        setCapturing(true);
+        try {
+            const photo = await cameraRef.current.takePictureAsync({ quality: 0.6 });
+            if (!photo?.uri) return;
+
+            // Downscale + recompress before it ever touches Firestore - a
+            // full-resolution photo blows past the 1MB document limit, and
+            // there's no reason to pay for/store more detail than a phone
+            // screen or a printed report actually needs.
+            const manipulated = await ImageManipulator.manipulateAsync(
+                photo.uri,
+                [{ resize: { width: 1280 } }],
+                { compress: 0.6, format: ImageManipulator.SaveFormat.JPEG, base64: true }
+            );
+            if (!manipulated.base64) return;
+
+            await addDoc(collection(db, 'sosRecordings', sosId, 'photos'), {
+                imageBase64: manipulated.base64,
+                mimeType: 'image/jpeg',
+                createdAt: serverTimestamp(),
+            });
+            setPhotoCount((c) => c + 1);
+        } catch (err) {
+            console.log('Failed to capture/save photo', err);
+            Alert.alert("Couldn't save photo", 'Please try taking that photo again.');
+        } finally {
+            setCapturing(false);
+        }
+    };
+
     const handleStop = async () => {
         isActiveRef.current = false;
         try {
@@ -152,12 +203,48 @@ export default function SOSActiveScreen({ route, navigation }: Props) {
                     ? "Microphone access was denied — your circle is still alerted, but audio isn't being recorded."
                     : "Your trusted circle can listen to this in real time. Describe your location and what's happening."}
             </Text>
-            <Text style={styles.segmentInfo}>{segmentCount} clip{segmentCount === 1 ? '' : 's'} saved safely</Text>
+            <Text style={styles.segmentInfo}>
+                {segmentCount} clip{segmentCount === 1 ? '' : 's'} saved safely
+                {photoCount > 0 ? ` · ${photoCount} photo${photoCount === 1 ? '' : 's'} saved` : ''}
+            </Text>
             {audioNotice && <Text style={styles.noticeText}>{audioNotice}</Text>}
+
+            <TouchableOpacity style={styles.photoButton} onPress={handleOpenCamera}>
+                <Ionicons name="camera" size={18} color={colors.dangerDark} style={{ marginRight: spacing.xs }} />
+                <Text style={styles.photoButtonText}>Photograph Perpetrator / Plate</Text>
+            </TouchableOpacity>
 
             <TouchableOpacity style={styles.stopButton} onPress={handleStop}>
                 <Text style={styles.stopButtonText}>Stop Recording</Text>
             </TouchableOpacity>
+
+            <Modal visible={cameraOpen} animationType="slide" onRequestClose={() => setCameraOpen(false)}>
+                <View style={styles.cameraContainer}>
+                    <CameraView ref={cameraRef} style={StyleSheet.absoluteFill} facing="back" />
+
+                    <View style={styles.cameraTopBar}>
+                        <TouchableOpacity style={styles.cameraCloseButton} onPress={() => setCameraOpen(false)}>
+                            <Ionicons name="close" size={26} color={colors.white} />
+                        </TouchableOpacity>
+                        {photoCount > 0 && (
+                            <View style={styles.cameraCountBadge}>
+                                <Text style={styles.cameraCountText}>{photoCount} saved</Text>
+                            </View>
+                        )}
+                    </View>
+
+                    <View style={styles.cameraBottomBar}>
+                        <Text style={styles.cameraHint}>Keep going — capture the perpetrator, their vehicle, and the number plate</Text>
+                        <TouchableOpacity
+                            style={[styles.shutterButton, capturing && styles.shutterButtonDisabled]}
+                            onPress={handleCapturePhoto}
+                            disabled={capturing}
+                        >
+                            <View style={styles.shutterInner} />
+                        </TouchableOpacity>
+                    </View>
+                </View>
+            </Modal>
         </View>
     );
 }
@@ -183,4 +270,72 @@ const styles = StyleSheet.create({
         paddingHorizontal: spacing.xl,
     },
     stopButtonText: { color: colors.dangerDark, fontFamily: 'Poppins_700Bold', fontSize: 16 },
+    photoButton: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: colors.white,
+        borderRadius: radius.pill,
+        paddingVertical: spacing.sm,
+        paddingHorizontal: spacing.lg,
+        marginBottom: spacing.md,
+    },
+    photoButtonText: { color: colors.dangerDark, fontFamily: 'Poppins_700Bold', fontSize: 14 },
+    cameraContainer: { flex: 1, backgroundColor: '#000' },
+    cameraTopBar: {
+        position: 'absolute',
+        top: 50,
+        left: spacing.lg,
+        right: spacing.lg,
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+    },
+    cameraCloseButton: {
+        width: 44,
+        height: 44,
+        borderRadius: 22,
+        backgroundColor: 'rgba(0,0,0,0.45)',
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    cameraCountBadge: {
+        backgroundColor: 'rgba(0,0,0,0.45)',
+        borderRadius: radius.pill,
+        paddingVertical: spacing.xs,
+        paddingHorizontal: spacing.md,
+    },
+    cameraCountText: { color: colors.white, fontWeight: '700', fontSize: 13 },
+    cameraBottomBar: {
+        position: 'absolute',
+        bottom: 50,
+        left: 0,
+        right: 0,
+        alignItems: 'center',
+        paddingHorizontal: spacing.xl,
+    },
+    cameraHint: {
+        color: colors.white,
+        textAlign: 'center',
+        fontSize: 13,
+        marginBottom: spacing.lg,
+        opacity: 0.9,
+    },
+    shutterButton: {
+        width: 72,
+        height: 72,
+        borderRadius: 36,
+        backgroundColor: 'rgba(255,255,255,0.3)',
+        borderWidth: 4,
+        borderColor: colors.white,
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    shutterButtonDisabled: { opacity: 0.5 },
+    shutterInner: {
+        width: 56,
+        height: 56,
+        borderRadius: 28,
+        backgroundColor: colors.white,
+    },
 });
