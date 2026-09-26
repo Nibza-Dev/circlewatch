@@ -117,6 +117,11 @@ export default function LiveMapScreen({ route }: Props) {
                     source={{ html: mapHtml }}
                     style={{ flex: 1 }}
                     javaScriptEnabled
+                    // Matches the "Allowed user-agent header" restriction set on the
+                    // MapTiler key (cloud.maptiler.com -> API keys -> circlewatch),
+                    // so the key only works from this app's WebView, not from just
+                    // anywhere it might get copied to.
+                    userAgent="CircleWatchApp/1.0"
                 />
             ) : (
                 <View style={styles.center}>
