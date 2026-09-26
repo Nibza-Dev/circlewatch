@@ -44,50 +44,37 @@ const SAFETY_KEYWORDS = [
     'assault', 'gang violence', 'rape', 'gender-based violence', 'domestic violence',
 ];
 
-const buildQuery = () => SAFETY_KEYWORDS.map((k) => `"${k}"`).join(' OR ');
+// South-Africa place/institution names. Instead of restricting by which
+// domain published an article (NewsAPI's crawler turned out to have very
+// thin coverage of specific SA news sites), we require the article to
+// actually MENTION South Africa - this works regardless of which outlet
+// NewsAPI happens to have indexed it from.
+const SA_PLACES = [
+    'South Africa', 'Johannesburg', 'Cape Town', 'Pretoria', 'Durban',
+    'Gauteng', 'KwaZulu-Natal', 'SAPS',
+];
 
-// Major South African news outlets. /v2/everything has no "country" filter
-// (that's only on /v2/top-headlines, which searches a much smaller "trending"
-// pool and turned out to return 0 matches most days) - restricting to these
-// domains is how we keep results South-Africa-specific instead.
-const SA_DOMAINS = [
-    'news24.com', 'iol.co.za', 'ewn.co.za', 'timeslive.co.za',
-    'citizen.co.za', 'mg.co.za', 'sabcnews.com', 'sowetanlive.co.za',
-].join(',');
+const buildQuery = () => {
+    const safety = SAFETY_KEYWORDS.map((k) => `"${k}"`).join(' OR ');
+    const places = SA_PLACES.map((p) => `"${p}"`).join(' OR ');
+    return `(${safety}) AND (${places})`;
+};
 
-async function queryNewsAPI(extraParams) {
+async function fetchHeadlines() {
     const params = new URLSearchParams({
         q: buildQuery(),
         language: 'en',
         sortBy: 'publishedAt',
         pageSize: '20',
         apiKey: NEWSAPI_KEY,
-        ...extraParams,
     });
     const res = await fetch(`https://newsapi.org/v2/everything?${params.toString()}`);
     const data = await res.json();
     if (data.status !== 'ok') {
         throw new Error(`NewsAPI error: ${data.code} - ${data.message}`);
     }
-    return data;
-}
-
-async function fetchHeadlines() {
-    // First try restricted to known South African outlets.
-    const restricted = await queryNewsAPI({ domains: SA_DOMAINS });
-    console.log(`South-Africa-domain search: totalResults=${restricted.totalResults}, returned=${(restricted.articles || []).length}`);
-    if ((restricted.articles || []).length > 0) {
-        return restricted.articles;
-    }
-
-    // Domain-restricted search came back empty (NewsAPI's coverage of these
-    // specific SA outlets may be thin) - fall back to an unrestricted search
-    // with the same safety keywords so the feed isn't empty. Less precisely
-    // "South African," but still real, relevant, keyword-matched news.
-    console.log('No results from SA-domain search, falling back to unrestricted search.');
-    const fallback = await queryNewsAPI({});
-    console.log(`Unrestricted search: totalResults=${fallback.totalResults}, returned=${(fallback.articles || []).length}`);
-    return fallback.articles || [];
+    console.log(`NewsAPI search: totalResults=${data.totalResults}, returned=${(data.articles || []).length}`);
+    return data.articles || [];
 }
 
 async function alreadyStored(url) {
