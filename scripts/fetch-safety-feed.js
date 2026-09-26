@@ -60,6 +60,24 @@ const buildQuery = () => {
     return `(${safety}) AND (${places})`;
 };
 
+const textIncludesAny = (text, terms) => {
+    const lower = text.toLowerCase();
+    return terms.some((term) => lower.includes(term.toLowerCase()));
+};
+
+// NewsAPI's `q` matches anywhere in the article's full indexed text, not
+// just the title/description it returns to us. That means a long article
+// about, say, Netanyahu or Trump can satisfy our (safety) AND (SA place)
+// query by mentioning "South Africa" once (the ICJ genocide case, tariffs,
+// AGOA, etc.) and a safety keyword once (e.g. "rape" in unrelated Gaza-war
+// coverage), with the two completely unrelated to each other in that
+// article. We re-check against just title+description - the part a human
+// would actually judge a "SA crime headline" by - before trusting a match.
+const isGenuinelyRelevant = (article) => {
+    const text = `${article.title || ''} ${article.description || ''}`;
+    return textIncludesAny(text, SA_PLACES) && textIncludesAny(text, SAFETY_KEYWORDS);
+};
+
 async function fetchHeadlines() {
     const params = new URLSearchParams({
         q: buildQuery(),
@@ -86,8 +104,11 @@ async function run() {
     const articles = await fetchHeadlines();
     console.log(`Fetched ${articles.length} candidate articles from NewsAPI.`);
 
+    const relevant = articles.filter(isGenuinelyRelevant);
+    console.log(`${relevant.length} of ${articles.length} passed the title/description relevance check.`);
+
     let added = 0;
-    for (const article of articles) {
+    for (const article of relevant) {
         if (!article.url || !article.title) continue;
         const exists = await alreadyStored(article.url);
         if (exists) continue;
