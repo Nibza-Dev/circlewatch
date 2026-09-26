@@ -24,6 +24,13 @@ function buildMapHtml(lat: number, lng: number) {
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <style>
     html, body, #map { height: 100%; margin: 0; padding: 0; background: #EDE7F6; }
+    .leaflet-control-attribution { font-size: 9px; opacity: 0.55; }
+    .pulse-marker { width: 20px; height: 20px; border-radius: 50%; background: #7B2FF7; border: 3px solid white; animation: pulse-ring 2.2s ease-out infinite; }
+    @keyframes pulse-ring {
+      0%   { box-shadow: 0 0 0 0 rgba(123,47,247,0.45); }
+      70%  { box-shadow: 0 0 0 18px rgba(123,47,247,0); }
+      100% { box-shadow: 0 0 0 0 rgba(123,47,247,0); }
+    }
   </style>
 </head>
 <body>
@@ -31,14 +38,16 @@ function buildMapHtml(lat: number, lng: number) {
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script>
     var map = L.map('map', { zoomControl: false }).setView([${lat}, ${lng}], 16);
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      maxZoom: 19,
-      attribution: '&copy; OpenStreetMap contributors'
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
+      subdomains: 'abcd',
+      maxZoom: 20,
+      detectRetina: true,
+      attribution: '&copy; OpenStreetMap contributors &copy; <a href="https://carto.com/attributions">CARTO</a>'
     }).addTo(map);
 
     var pulseIcon = L.divIcon({
       className: '',
-      html: '<div style="width:20px;height:20px;border-radius:50%;background:#7B2FF7;border:3px solid white;box-shadow:0 0 0 6px rgba(123,47,247,0.3);"></div>',
+      html: '<div class="pulse-marker"></div>',
       iconSize: [20,20],
       iconAnchor: [10,10],
     });
